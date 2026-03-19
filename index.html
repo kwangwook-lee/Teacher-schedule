@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>선생님별 시간표 조회</title>
+    <!-- Tailwind CSS 적용 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- 폰트 적용 (Noto Sans KR) -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Noto Sans KR', sans-serif; background-color: #f3f4f6; }
+        table { border-collapse: collapse; width: 100%; table-layout: fixed; }
+        th, td { border: 1px solid #e5e7eb; text-align: center; vertical-align: middle; padding: 0.5rem; height: 80px; }
+        th { background-color: #f8fafc; font-weight: 600; color: #475569; }
+        .subject-cell { font-weight: 500; color: #1e293b; }
+        .class-cell { font-size: 0.875rem; color: #64748b; margin-top: 4px; }
+        /* 스크롤바 숨기기 (모바일 대응) */
+        .overflow-x-auto::-webkit-scrollbar { display: none; }
+        .overflow-x-auto { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body class="min-h-screen p-4 md:p-8 flex justify-center">
+
+    <div class="max-w-5xl w-full bg-white rounded-2xl shadow-xl overflow-hidden p-6 md:p-10 flex flex-col gap-6">
+        
+        <!-- 헤더 영역 -->
+        <div class="border-b pb-4">
+            <h1 class="text-3xl font-bold text-gray-800 tracking-tight">🏫 선생님별 시간표 조회</h1>
+            <p class="text-gray-500 mt-2">선생님 이름을 검색하여 이번 학기 시간표를 확인하세요.</p>
+        </div>
+
+        <!-- 컨트롤 영역 (검색) -->
+        <div class="flex flex-col gap-6 bg-gray-50 p-6 rounded-xl border border-gray-100 max-w-md mx-auto w-full">
+            <!-- 선생님 검색 -->
+            <div class="flex flex-col gap-2">
+                <label class="font-semibold text-gray-700 text-sm">선생님 이름 검색</label>
+                <div class="flex gap-2">
+                    <input type="text" id="teacherNameInput" placeholder="예: 허영, 김현정" 
+                        class="flex-1 border border-gray-300 rounded-lg px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                        onkeypress="if(event.key === 'Enter') searchTimetable()">
+                    <button onclick="searchTimetable()" 
+                        class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2.5 rounded-lg font-medium transition-colors shadow-sm">
+                        조회
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 메시지 박스 (알림창 대체) -->
+        <div id="messageBox" class="hidden rounded-lg p-4 text-sm font-medium"></div>
+
+        <!-- 결과 테이블 영역 -->
+        <div id="resultArea" class="hidden flex-col gap-4 mt-4">
+            <div class="flex justify-between items-end">
+                <h2 class="text-2xl font-bold text-gray-800"><span id="resultTeacherName" class="text-blue-600"></span> 선생님 시간표</h2>
+                <button onclick="window.print()" class="text-gray-500 hover:text-gray-700 text-sm flex items-center gap-1 bg-gray-100 px-3 py-1.5 rounded-md transition-colors">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"></path></svg>
+                    인쇄
+                </button>
+            </div>
+            
+            <div class="overflow-x-auto rounded-xl border border-gray-200 shadow-sm">
+                <table id="timetable">
+                    <thead>
+                        <tr>
+                            <th class="w-16">교시</th>
+                            <th>월</th>
+                            <th>화</th>
+                            <th>수</th>
+                            <th>목</th>
+                            <th>금</th>
+                        </tr>
+                    </thead>
+                    <tbody id="timetableBody">
+                        <!-- Javascript로 채워집니다. -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // [여기에 CSV 파일의 내용을 전체 복사하여 붙여넣으세요]
+        // 현재는 파일의 일부 데이터만 예시로 들어있습니다. 메모장으로 연 CSV 텍스트를 이 안에 덮어쓰세요.
+        const rawCSVData = `2026학년도 1학기 전체시간표,,,,,,,,,,,,,,,,,,,,,
+,,,,,,,,,,,,,,,,,,,,배정고등학교,
+요일,교시,1학년,,,,,,2학년,,,,,,,3학년,,,,,,
+,,1반,2반,3반,4반,5반,6반,1반,2반,3반,4반,5반,6반,7반,1반,2반,3반,4반,5반,6반,7반
+월,1교시,통합과학1,공통수학1,과학탐구실험1,공통국어1,한국사1,자율역량탐구,미적분Ⅰ,문학,문학,대수,스포츠 문화,자율역량탐구,대수,논술,확률과 통계,심리학,음악 감상과 비평,공강,물리학Ⅱ,화학Ⅱ
+,,장영화,고재덕,최정곤,박두일,김지수,고경미,유지혜,송병훈,김용진,옥수민,주원석,박은정,박태완,추재훈 H - 1,남송현 H - 1,이소진 H - 1,신은경 H - 1,유지연 H - 1,안준범 H - 1,허영 H - 1
+,2교시,자율역량탐구,과학탐구실험1,공통수학1,통합과학1,통합사회1,공통영어1,자율역량탐구,대수,영어Ⅰ,미술 창작,정보,미적분Ⅰ,자율역량탐구,생명과학Ⅱ,한국사,음악 감상과 비평,윤리와 사상,한국지리,기하,현대문학 감상
+,,김현정,최정곤,고재덕,장영화,강슬기,이광욱,김용진,옥수민,김혜미,신선경,구정훈,박태완,최승희,이지은 C - 1,최미리 C - 1,유경희 C - 1,권민지 C - 1,김성년 C - 1,김병희 C - 1,이명진 C - 1
+,3교시,공통영어1,통합과학1,공통국어1,통합사회1,체육1,한국사1,스포츠 문화,영어Ⅰ,일본어,영어Ⅰ,미적분Ⅰ,정보,음악 연주와 창작,영어 독해와 작문,확률과 통계,사회문제 탐구,과학사,한국사,물리학Ⅱ,고전문학 감상
+,,이광욱,허영,김현정,노우선,류제원,김지수,주원석,박은정,이소진,김혜미,유지혜,구정훈,신은경,정미영 D - 1,남송현 D - 1,유지연 D - 1,아원미 D - 1,최미리 D - 1,안준범 D - 1,송병훈 D - 1
+,4교시,공통수학1,통합사회1,보건,공통영어1,자율역량탐구,진로와 직업,미술 창작,스포츠 문화,미적분Ⅰ,문학,대수,대수,영어Ⅰ,영어 독해와 작문,운동과 건강,심리학,지구과학Ⅱ,공강,기하,현대문학 감상
+,,고재덕,강슬기,안은수,고경미,박두일,추재훈,신선경,주원석,유지혜,김용진,옥수민,박태완,박은정,정미영 A - 1,김창훈 A - 1,이소진 A - 1,장영화 A - 1,유경희 A - 1,김병희 A - 1,이명진 A - 1
+,5교시,통합사회1,한국사1,통합과학1,체육1,공통국어1,통합과학1,매체 의사소통,물리학,사회문제 탐구,운동과 건강,세계시민과 지리,생명과학,세계 문화와 영어,영어 독해와 작문,확률과 통계,사회문제 탐구,음악 감상과 비평,공강,물리학Ⅱ,고전문학 감상
+,,최미리,김지수,허영,류제원,김현정,이지은,최승희 C - 1,최정곤 C - 1,노우선 C - 1,이동규 C - 1,김성년 C - 1,아원미 C - 1,이정인 C - 1,김혜미 F - 1,남송현 F - 1,유지연 F - 1,신은경 F - 1,박태완 F - 1,안준범 F - 1,송병훈 F - 1
+,6교시,음악,공통국어1,통합사회1,공통수학1,공통영어1,통합사회1,대수,일본어,자율역량탐구,미적분Ⅰ,영어Ⅰ,문학,스포츠 문화,영어 독해와 작문,공강,심리학,윤리와 사상,한국지리,운동과 건강,화학Ⅱ
+,,유경희,김현정,최미리,고재덕,고경미,강슬기,옥수민,이소진,김용진,유지혜,박은정,송병훈,주원석,정미영 G - 1,추재훈 G - 1,구정훈 G - 1,권민지 G - 1,김성년 G - 1,김창훈 G - 1,허영 G - 1
+,7교시,공통국어1,체육1,자율역량탐구,한국사1,통합과학1,공통수학1,매체 의사소통,물리학,사회문제 탐구,과학의 역사와 문화,사회와 문화,생명과학,세계 문화와 영어,영어 독해와 작문,음악 감상과 비평,심리학,윤리와 사상,사회문제 탐구,확률과 통계,현대문학 감상
+,,박두일,류제원,이광욱,김지수,이지은,남송현,이정연,최정곤 A - 1,노우선 A - 1,안준범 A - 1,강슬기 A - 1,아원미 A - 1,이정인 A - 1,김혜미 B - 1,유경희 B - 1,구정훈 B - 1,권민지 B - 1,유지연 B - 1,김병희 B - 1,이명진 B - 1
+화,1교시,통합과학1,자율역량탐구,통합사회1,공통수학1,공통영어1,미술,매체 의사소통,물리학,세계시민과 지리,운동과 건강,사회와 문화,생명과학,세계 문화와 영어,영어 독해와 작문,음악 감상과 비평,심리학,윤리와 사상,사회문제 탐구,확률과 통계,현대문학 감상
+,,이지은,김현정,최미리,고재덕,고경미,신선경,김용진 D - 1,최정곤 D - 1,김성년 D - 1,이동규 D - 1,강슬기 D - 1,아원미 D - 1,이정인 D - 1,김혜미 B - 1,유경희 B - 1,류제원 B - 1,권민지 B - 1,유지연 B - 1,김병희 B - 1,이명진 B - 1
+,2교시,한국사1,자율역량탐구,음악,통합사회1,통합사회1,통합사회1,매체 의사소통,물리학,사회문제 탐구,운동과 건강,세계시민과 지리,생명과학,세계 문화와 영어,논술,확률과 통계,심리학,운동과 건강,공강,물리학Ⅱ,화학Ⅱ
+,,김지수,이광욱,유경희,강슬기,권민지,최미리,김용진 C - 1,최정곤 C - 1,노우선 C - 1,이동규 C - 1,김성년 C - 1,아원미 C - 1,이정인 C - 1,추재훈 H - 1,남송현 H - 1,구정훈 H - 1,김창훈 H - 1,박두일 H - 1,안준범 H - 1,허영 H - 1
+,3교시,공통수학1,통합사회1,체육1,공통영어1,통합과학1,통합과학1,자율역량탐구,대수,영어Ⅰ,문학,음악 연주와 창작,대수,정보,영어 독해와 작문,확률과 통계,사회문제 탐구,운동과 건강,공강,물리학Ⅱ,고전문학 감상
+,,고재덕,노우선,류제원,이광욱,장영화,허영,정미영,옥수민,박은정,최승희,신은경,박태완,구정훈,김혜미 F - 1,남송현 F - 1,유지연 F - 1,김창훈 F - 1,신선경 F - 1,안준범 F - 1,송병훈 F - 1
+,4교시,공통국어1,공통국어1,공통수학1,자율역량탐구,진로와 직업,한국사1,문학,미적분Ⅰ,미술 창작,일본어,대수,영어Ⅰ,영어Ⅰ,생명과학Ⅱ,영어 회화,사회문제 탐구,음악 감상과 비평,한국사,확률과 통계,현대문학 감상
+,,김현정,박두일,박태완,고경미,추재훈,김지수,최승희,유지혜,신선경,이소진,옥수민,박은정,김혜미,이지은 E - 1,이정인 E - 1,유지연 E - 1,신은경 E - 1,최미리 E - 1,김병희 E - 1,이명진 E - 1
+,5교시,보건,음악,공통영어1,통합과학1,공통수학1,공통수학1,매체 의사소통,물리학,사회문제 탐구,기후변화와 환경,사회와 문화,생명과학,세계 문화와 영어,영어 독해와 작문,공강,심리학,윤리와 사상,한국지리,운동과 건강,화학Ⅱ
+,,안은수,유경희,이광욱,장영화,고재덕,남송현,김용진 B - 1,최정곤 B - 1,노우선 B - 1,안준범 B - 1,강슬기 B - 1,아원미 B - 1,이정인 B - 1,정미영 G - 1,류제원 G - 1,구정훈 G - 1,권민지 G - 1,김성년 G - 1,김창훈 G - 1,허영 G - 1
+,6교시,공통영어1,공통수학1,통합과학1,과학탐구실험1,공통국어1,공통영어1,영어Ⅰ,미술 창작,일본어,대수,미적분Ⅰ,음악 연주와 창작,미적분Ⅰ,영어 독해와 작문,확률과 통계,사회문제 탐구,과학사,공강,물리학Ⅱ,고전문학 감상
+,,이광욱,고재덕,장영화,최정곤,박두일,고경미,김혜미,신선경,이소진,옥수민,유지혜,신은경,박태완,정미영 D - 1,남송현 D - 1,유지연 D - 1,아원미 D - 1,박은정 D - 1,안준범 D - 1,송병훈 D - 1
+,7교시,통합사회1,공통영어1,한국사1,공통국어1,과학탐구실험1,공통국어1,일본어,자율역량탐구,대수,미적분Ⅰ,영어Ⅰ,문학,문학,생명과학Ⅱ,공강,운동과 건강,윤리와 사상,한국지리,기하,현대문학 감상
+,,최미리,고경미,김지수,김현정,허영,박두일,이소진,김용진,옥수민,유지혜,박은정,최승희,송병훈,이지은 C - 1,노우선 C - 1,김창훈 C - 1,권민지 C - 1,김성년 C - 1,김병희 C - 1,이명진 C - 1
+수,1교시,통합사회1,통합사회1,자율역량탐구,한국사1,체육1,공통영어1,미적분Ⅰ,대수,일본어,영어Ⅰ,정보,스포츠 문화,미적분Ⅰ,영어 독해와 작문,공강,심리학,윤리와 사상,한국지리,음악 감상과 비평,화학Ⅱ
+,,노우선,최미리,김현정,김지수,류제원,이광욱,유지혜,옥수민,이소진,박은정,구정훈,주원석,박태완,김혜미 G - 1,송병훈 G - 1,유경희 G - 1,권민지 G - 1,김성년 G - 1,신은경 G - 1,허영 G - 1
+,2교시,한국사1,공통영어1,체육1,통합과학1,미술,공통국어1,매체 의사소통,물리학,세계시민과 지리,운동과 건강,사회와 문화,생명과학,세계 문화와 영어,영어 독해와 작문,확률과 통계,사회문제 탐구,음악 감상과 비평,공강,물리학Ⅱ,고전문학 감상
+,,김지수,이광욱,류제원,이지은,신선경,박두일,이정연,최정곤 D - 1,김성년 D - 1,이동규 D - 1,강슬기 D - 1,아원미 D - 1,이정인 D - 1,정미영 F - 1,남송현 F - 1,유지연 F - 1,신은경 F - 1,이소진 F - 1,안준범 F - 1,송병훈 F - 1
+,3교시,공통국어1,통합과학1,공통국어1,공통수학1,통합사회1,통합사회1,대수,영어Ⅰ,미적분Ⅰ,스포츠 문화,자율역량탐구,문학,영어Ⅰ,생명과학Ⅱ,영어 회화,사회문제 탐구,운동과 건강,공강,확률과 통계,현대문학 감상
+,,김현정,장영화,박두일,고재덕,최미리,노우선,옥수민,김혜미,유지혜,주원석,최승희,김용진,박은정,이지은 E - 1,이정인 E - 1,유지연 E - 1,김창훈 E - 1,남송현 E - 1,김병희 E - 1,이명진 E - 1
+,4교시,공통수학1,음악,공통영어1,공통영어1,공통수학1,미술,일본어,문학,스포츠 문화,대수,문학,영어Ⅰ,문학,영어 독해와 작문,운동과 건강,심리학,지구과학Ⅱ,한국사,기하,현대문학 감상
+,,박태완,유경희,고경미,이광욱,유지혜,신선경,이소진,최승희,주원석,옥수민,송병훈,박은정,김용진,정미영 A - 1,김창훈 A - 1,이동규 A - 1,장영화 A - 1,최미리 A - 1,김병희 A - 1,이명진 A - 1
+,5교시,보건,한국사1,공통수학1,자율역량탐구,공통국어1,체육1,매체 의사소통,물리학,사회문제 탐구,기후변화와 환경,사회와 문화,생명과학,세계 문화와 영어,논술,확률과 통계,심리학,음악 감상과 비평,공강,물리학Ⅱ,화학Ⅱ
+,,안은수,김지수,고재덕,박두일,김현정,류제원,이정연,최정곤 B - 1,노우선 B - 1,이지은 B - 1,강슬기 B - 1,아원미 B - 1,이정인 B - 1,추재훈 H - 1,남송현 H - 1,구정훈 H - 1,신은경 H - 1,김혜미 H - 1,안준범 H - 1,허영 H - 1
+,6교시,공통영어1,공통수학1,통합과학1,미술,한국사1,공통수학1,매체 의사소통,물리학,사회문제 탐구,운동과 건강,세계시민과 지리,생명과학,세계 문화와 영어,영어 독해와 작문,운동과 건강,심리학,윤리와 사상,사회문제 탐구,확률과 통계,현대문학 감상
+,,고경미,박태완,장영화,신선경,김지수,옥수민,이정연,최정곤 C - 1,노우선 C - 1,이동규 C - 1,김성년 C - 1,아원미 C - 1,이정인 C - 1,정미영 B - 1,김창훈 B - 1,이소진 B - 1,권민지 B - 1,유지연 B - 1,김병희 B - 1,이명진 B - 1
+,7교시,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험
+,,박두일,류제원,고경미,고재덕,안은수,추재훈,임성숙,구정훈,신선경,김용진,신은경,송병훈,강슬기,유경희,남송현,박태완,권민지,김성년,김병희,김창훈
+목,1교시,음악,한국사1,통합사회1,통합과학1,진로와 직업,통합과학1,대수,미적분Ⅰ,문학,영어Ⅰ,문학,정보,자율역량탐구,생명과학Ⅱ,공강,운동과 건강,윤리와 사상,한국지리,기하,현대문학 감상
+,,유경희,김지수,강슬기,허영,추재훈,장영화,옥수민,유지혜,송병훈,박은정,최승희,구정훈,정미영,이지은 C - 1,아원미 C - 1,김창훈 C - 1,권민지 C - 1,김성년 C - 1,김병희 C - 1,이명진 C - 1
+,2교시,과학탐구실험1,통합과학1,통합과학1,공통수학1,공통국어1,진로와 직업,미술 창작,일본어,대수,미적분Ⅰ,정보,대수,음악 연주와 창작,영어 독해와 작문,확률과 통계,사회문제 탐구,과학사,공강,물리학Ⅱ,고전문학 감상
+,,최정곤,장영화,이지은,고재덕,박두일,추재훈,신선경,이소진,옥수민,유지혜,구정훈,박태완,신은경,김혜미 D - 1,남송현 D - 1,유지연 D - 1,아원미 D - 1,김성년 D - 1,안준범 D - 1,송병훈 D - 1
+,3교시,공통국어1,공통영어1,한국사1,통합사회1,공통영어1,공통국어1,영어Ⅰ,문학,미술 창작,일본어,음악 연주와 창작,자율역량탐구,대수,영어 독해와 작문,운동과 건강,심리학,윤리와 사상,사회문제 탐구,확률과 통계,현대문학 감상
+,,박두일,고경미,김지수,최미리,이광욱,김현정,박은정,김용진,신선경,이소진,신은경,최승희,박태완,정미영 B - 1,김창훈 B - 1,류제원 B - 1,권민지 B - 1,유지연 B - 1,김병희 B - 1,이명진 B - 1
+,4교시,체육1,보건,음악,공통영어1,공통수학1,한국사1,매체 의사소통,물리학,사회문제 탐구,기후변화와 환경,사회와 문화,생명과학,세계 문화와 영어,논술,확률과 통계,심리학,운동과 건강,한국사,물리학Ⅱ,화학Ⅱ
+,,류제원,안은수,유경희,고경미,고재덕,김지수,김용진 B - 1,최정곤 B - 1,노우선 B - 1,이지은 B - 1,강슬기 B - 1,아원미 B - 1,이정인 B - 1,추재훈 H - 1,남송현 H - 1,구정훈 H - 1,김창훈 H - 1,최미리 H - 1,안준범 H - 1,허영 H - 1
+,5교시,자율역량탐구,공통국어1,보건,진로와 직업,미술,통합사회1,문학,영어Ⅰ,자율역량탐구,자율역량탐구,미적분Ⅰ,미적분Ⅰ,문학,영어 독해와 작문,음악 감상과 비평,심리학,지구과학Ⅱ,공강,기하,현대문학 감상
+,,이광욱,박두일,안은수,추재훈,신선경,권민지,송병훈,박은정,정미영,김현정,유지혜,박태완,최승희,김혜미 A - 1,유경희 A - 1,이동규 A - 1,장영화 A - 1,옥수민 A - 1,김병희 A - 1,이명진 A - 1
+,6교시,통합과학1,공통수학1,공통영어1,공통국어1,한국사1,체육1,매체 의사소통,물리학,사회문제 탐구,과학의 역사와 문화,사회와 문화,생명과학,세계 문화와 영어,영어 독해와 작문,한국사,심리학,윤리와 사상,한국지리,음악 감상과 비평,화학Ⅱ
+,,장영화,고재덕,이광욱,박두일,김지수,류제원,김용진 A - 1,최정곤 A - 1,노우선 A - 1,안준범 A - 1,강슬기 A - 1,아원미 A - 1,이정인 A - 1,김혜미 G - 1,최미리 G - 1,유경희 G - 1,권민지 G - 1,김성년 G - 1,신은경 G - 1,허영 G - 1
+,7교시,공통영어1,체육1,공통국어1,미술,통합과학1,공통수학1,일본어,자율역량탐구,미적분Ⅰ,문학,대수,영어Ⅰ,정보,생명과학Ⅱ,영어 회화,사회문제 탐구,음악 감상과 비평,공강,확률과 통계,현대문학 감상
+,,고경미,류제원,김현정,신선경,허영,남송현,이소진,정미영,유지혜,송병훈,옥수민,박은정,구정훈,이지은 E - 1,이정인 E - 1,유지연 E - 1,신은경 E - 1,이동규 E - 1,김병희 E - 1,이명진 E - 1
+금,1교시,통합사회1,공통영어1,공통수학1,체육1,통합과학1,자율역량탐구,문학,일본어,문학,자율역량탐구,영어Ⅰ,음악 연주와 창작,미적분Ⅰ,생명과학Ⅱ,영어 회화,사회문제 탐구,운동과 건강,공강,확률과 통계,현대문학 감상
+,,강슬기,이광욱,고재덕,류제원,장영화,박두일,김용진,이소진,최승희,정미영,김혜미,신은경,박태완,이지은 E - 1,이정인 E - 1,유지연 E - 1,김창훈 E - 1,안은수 E - 1,김병희 E - 1,이명진 E - 1
+,2교시,통합과학1,공통국어1,한국사1,진로와 직업,통합사회1,공통영어1,영어Ⅰ,미적분Ⅰ,대수,미술 창작,자율역량탐구,미적분Ⅰ,정보,영어 독해와 작문,확률과 통계,사회문제 탐구,과학사,공강,물리학Ⅱ,고전문학 감상
+,,허영,김현정,김지수,추재훈,노우선,고경미,박은정,유지혜,옥수민,신선경,정미영,박태완,구정훈,김혜미 D - 1,남송현 D - 1,유지연 D - 1,아원미 D - 1,김창훈 D - 1,안준범 D - 1,송병훈 D - 1
+,3교시,한국사1,통합사회1,공통영어1,공통국어1,공통수학1,통합과학1,매체 의사소통,물리학,사회문제 탐구,과학의 역사와 문화,사회와 문화,생명과학,세계 문화와 영어,생명과학Ⅱ,공강,음악 감상과 비평,윤리와 사상,한국지리,기하,현대문학 감상
+,,김지수,최미리,고경미,김현정,고재덕,장영화,김용진 A - 1,최정곤 A - 1,노우선 A - 1,안준범 A - 1,강슬기 A - 1,아원미 A - 1,이정인 A - 1,이지은 C - 1,임성숙 C - 1,유경희 C - 1,권민지 C - 1,김성년 C - 1,김병희 C - 1,이명진 C - 1
+,4교시,체육1,통합과학1,공통국어1,통합사회1,공통영어1,과학탐구실험1,미적분Ⅰ,미술 창작,영어Ⅰ,일본어,문학,정보,대수,영어 독해와 작문,음악 감상과 비평,심리학,지구과학Ⅱ,공강,기하,현대문학 감상
+,,류제원,이지은,박두일,권민지,이광욱,허영,유지혜,신선경,박은정,이소진,김용진,구정훈,박태완,김혜미 A - 1,유경희 A - 1,이동규 A - 1,장영화 A - 1,신은경 A - 1,김병희 A - 1,이명진 A - 1
+,5교시,공통수학1,보건,통합사회1,한국사1,자율역량탐구,공통국어1,매체 의사소통,물리학,세계시민과 지리,운동과 건강,사회와 문화,생명과학,세계 문화와 영어,영어 독해와 작문,확률과 통계,사회문제 탐구,운동과 건강,한국사,물리학Ⅱ,고전문학 감상
+,,고재덕,안은수,노우선,김지수,고경미,김현정,최승희 D - 1,최정곤 D - 1,김성년 D - 1,이동규 D - 1,강슬기 D - 1,아원미 D - 1,이정인 D - 1,정미영 F - 1,남송현 F - 1,유지연 F - 1,김창훈 F - 1,최미리 F - 1,안준범 F - 1,송병훈 F - 1
+,6교시,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험
+,,김현정,류제원,고경미,이광욱,노우선,추재훈,임성숙,구정훈,신선경,박태완,신은경,송병훈,강슬기,유경희,남송현,이소진,권민지,안준범,김병희,김창훈
+,7교시,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험,창의적체험
+,,김현정,류제원,고경미,이광욱,노우선,추재훈,임성숙,구정훈,신선경,박태완,신은경,송병훈,강슬기,유경희,남송현,이소진,권민지,안준범,김병희,김창훈`;
+
+        let csvDataRows = [];
+        const days = ['월', '화', '수', '목', '금'];
+        
+        // 반 정보 매핑 (열 인덱스 2번부터 21번까지)
+        // 1학년 1~6반, 2학년 1~7반, 3학년 1~7반 구조를 따름
+        const classNames = [
+            "1-1", "1-2", "1-3", "1-4", "1-5", "1-6", 
+            "2-1", "2-2", "2-3", "2-4", "2-5", "2-6", "2-7", 
+            "3-1", "3-2", "3-3", "3-4", "3-5", "3-6", "3-7"
+        ];
+
+        // 메시지 표시 함수 (alert 대체)
+        function showMessage(msg, type = 'error') {
+            const msgBox = document.getElementById('messageBox');
+            msgBox.innerHTML = msg;
+            msgBox.classList.remove('hidden', 'bg-red-50', 'text-red-600', 'bg-green-50', 'text-green-600');
+            
+            if (type === 'error') {
+                msgBox.classList.add('bg-red-50', 'text-red-600');
+            } else {
+                msgBox.classList.add('bg-green-50', 'text-green-600');
+            }
+        }
+
+        function hideMessage() {
+            document.getElementById('messageBox').classList.add('hidden');
+        }
+
+        // CSV 파서 함수 (쉼표 구분)
+        function parseCSVLine(text) {
+            let ret = [], i = 0, p = '', s = true;
+            for (let l = text.length; i < l; i++) {
+                let c = text[i];
+                if (c === '"') {
+                    if (s && c === '"') p += c;
+                    s = !s;
+                } else if (c === ',' && s) {
+                    ret.push(p.trim());
+                    p = '';
+                } else {
+                    p += c;
+                }
+            }
+            ret.push(p.trim());
+            return ret;
+        }
+
+        // 페이지가 열리면 내장된 CSV 데이터를 자동으로 로드합니다.
+        window.addEventListener('DOMContentLoaded', () => {
+            processCSV(rawCSVData);
+        });
+
+        // CSV 데이터를 배열로 변환
+        function processCSV(text) {
+            const lines = text.split(/\r?\n/);
+            csvDataRows = lines.map(line => parseCSVLine(line)).filter(row => row.length > 5);
+        }
+
+        // 특정 조건에 맞춰 선생님 이름 추출하는 함수
+        function extractTeacherName(rawName) {
+            if (!rawName) return "";
+            let name = rawName.trim();
+            
+            // 조건 1: "허영"인 경우 두 글자만
+            if (name.startsWith("허영")) {
+                return "허영";
+            }
+            // 조건 2: 그 외에는 모두 앞의 세 글자만 추출 (뒤의 A-1 등 무시)
+            if (name.length >= 3) {
+                return name.substring(0, 3);
+            }
+            return name; // 예외 처리 (두 글자 이름 등)
+        }
+
+        // 시간표 검색 로직
+        function searchTimetable() {
+            hideMessage();
+            const targetTeacher = document.getElementById('teacherNameInput').value.trim();
+            
+            if (csvDataRows.length === 0) {
+                showMessage("시간표 데이터가 로드되지 않았습니다. 코드 내 rawCSVData를 확인해주세요.");
+                return;
+            }
+            if (!targetTeacher) {
+                showMessage("선생님 이름을 입력해주세요.");
+                return;
+            }
+
+            // 시간표 데이터 구조 초기화 (최대 7교시 기준)
+            let maxPeriod = 7; 
+            const timetableData = {};
+            for (let p = 1; p <= 8; p++) {
+                timetableData[p] = { '월': null, '화': null, '수': null, '목': null, '금': null };
+            }
+
+            let currentDay = '';
+            let isTeacherFound = false;
+
+            // 데이터 순회 (과목 행과 교사 행은 항상 짝을 이룸)
+            for (let i = 0; i < csvDataRows.length; i++) {
+                const subjectRow = csvDataRows[i];
+                
+                // '교시'라는 단어가 있는 행이 과목 행이라고 판단
+                const periodCell = subjectRow[1] || '';
+                if (!periodCell.includes('교시')) continue;
+                
+                const periodNumber = parseInt(periodCell.replace(/[^0-9]/g, ''));
+                if (periodNumber > maxPeriod) maxPeriod = periodNumber;
+
+                // 요일 업데이트 (요일이 적혀있는 경우 갱신)
+                const dayVal = subjectRow[0];
+                if (dayVal && days.includes(dayVal)) {
+                    currentDay = dayVal;
+                }
+
+                if (!currentDay) continue; // 요일을 파악할 수 없으면 건너뜀
+
+                // 다음 행은 선생님 이름이 있는 행
+                const teacherRow = csvDataRows[i + 1];
+                if (!teacherRow) continue;
+
+                // 각 반(열)별로 데이터 확인 (열 인덱스 2번부터 시작)
+                for (let col = 2; col <= 21; col++) {
+                    const subject = subjectRow[col] || '';
+                    const rawTeacher = teacherRow[col] || '';
+
+                    if (!subject || !rawTeacher) continue;
+
+                    const teacherName = extractTeacherName(rawTeacher);
+
+                    // 선생님 이름이 일치하면 시간표에 등록
+                    if (teacherName === targetTeacher) {
+                        isTeacherFound = true;
+                        const targetClass = classNames[col - 2] || '기타';
+                        
+                        // 이미 해당 교시에 일정이 있다면 (합반의 경우), 텍스트를 이어붙임
+                        if (timetableData[periodNumber][currentDay]) {
+                             timetableData[periodNumber][currentDay].class += `, ${targetClass}`;
+                        } else {
+                            timetableData[periodNumber][currentDay] = {
+                                subject: subject,
+                                class: targetClass
+                            };
+                        }
+                    }
+                }
+            }
+
+            if (!isTeacherFound) {
+                showMessage(`'${targetTeacher}' 선생님의 시간표 데이터를 찾을 수 없습니다. 이름을 확인해주세요.`);
+                document.getElementById('resultArea').classList.add('hidden');
+                return;
+            }
+
+            renderTable(timetableData, targetTeacher, maxPeriod);
+        }
+
+        // HTML 테이블 렌더링
+        function renderTable(data, teacherName, maxPeriod) {
+            document.getElementById('resultTeacherName').textContent = teacherName;
+            const tbody = document.getElementById('timetableBody');
+            tbody.innerHTML = '';
+
+            for (let p = 1; p <= maxPeriod; p++) {
+                const tr = document.createElement('tr');
+                // 교시 열
+                const th = document.createElement('td');
+                th.className = 'font-bold bg-gray-50 text-gray-700';
+                th.textContent = `${p}교시`;
+                tr.appendChild(th);
+
+                // 요일별 데이터 열
+                days.forEach(day => {
+                    const td = document.createElement('td');
+                    const cellData = data[p][day];
+                    
+                    if (cellData) {
+                        td.className = 'bg-blue-50/50 hover:bg-blue-50 transition-colors';
+                        td.innerHTML = `
+                            <div class="subject-cell">${cellData.subject}</div>
+                            <div class="class-cell">${cellData.class}</div>
+                        `;
+                    } else {
+                        td.innerHTML = `<div class="text-gray-300">-</div>`;
+                    }
+                    tr.appendChild(td);
+                });
+
+                tbody.appendChild(tr);
+            }
+
+            document.getElementById('resultArea').classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>
